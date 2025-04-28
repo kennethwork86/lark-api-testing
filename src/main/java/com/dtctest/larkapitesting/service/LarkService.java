@@ -1,7 +1,6 @@
 package com.dtctest.larkapitesting.service;
 
 import com.dtctest.larkapitesting.constant.LarkConstant;
-import com.dtctest.larkapitesting.enums.lark.LarkSearchConjunctionType;
 import com.dtctest.larkapitesting.enums.lark.LarkSearchOperatorType;
 import com.dtctest.larkapitesting.model.lark.*;
 import com.dtctest.larkapitesting.properties.LarkProperties;
@@ -212,7 +211,7 @@ public class LarkService {
         LarkDictResp resp = putWithAppToken(getAppToken().tenantAccessToken, LarkConstant.LARK_UPDATE_TABLE_RECORD(appToken, tableId, recordId))
                 .bodyJson(body)
                 .asObject(LarkDictResp.class).body();
-log.info("data: {}", resp);
+
         return getTableRecordId(resp);
     }
 
@@ -243,17 +242,6 @@ log.info("data: {}", resp);
         TableRecordItemsResp response = resp.asObject(TableRecordItemsResp.class);
 
         return new LarkResponse<>(response);
-    }
-
-    public void subscribeDocEvents(String fileToken, String fileType){
-        log.info("getAppToken().tenantAccessToken {}", getAppToken().tenantAccessToken);
-        LarkDictResp resp = postWithAppToken(getAppToken().tenantAccessToken, LarkConstant.LARK_SUBSCRIBE_DOCS_EVENTS(fileToken))
-                .queryString("file_type", fileType)
-                .asObject(LarkDictResp.class).body();
-        log.info("resp: {}", resp);
-        if (resp == null || resp.data == null) return;
-        Map<String, Object> dataMap = resp.data;
-        log.info("dataMap: {}", dataMap);
     }
 
 

@@ -26,11 +26,4 @@ public class LarkConstant {
         return String.format("/open-apis/bitable/v1/apps/%s/tables/%s/records", appToken, tableId);
     }
 
-
-
-    // https://open.larksuite.com/document/server-docs/docs/drive-v1/event/subscribe
-    public static String LARK_SUBSCRIBE_DOCS_EVENTS(String fileToken){
-        return String.format("/open-apis/drive/v1/files/%s/subscribe", fileToken);
-    }
-
 }
