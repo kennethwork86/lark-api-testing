@@ -22,6 +22,9 @@ public class CandidateRecord {
         Map<String, T> map = new HashMap<>();
         try {
             for (Field field : this.getClass().getDeclaredFields()) {
+                if ("log".equals(field.getName())) {
+                    continue;
+                }
                 field.setAccessible(true);
                 Object value = field.get(this);
                 if (clazz.isInstance(value)) {

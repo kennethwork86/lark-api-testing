@@ -16,11 +16,6 @@ public class LarkConstant {
         return String.format("/open-apis/bitable/v1/apps/%s/tables/%s/records/%s", appToken, tableId, recordId);
     }
 
-    // https://open.larksuite.com/document/uAjLw4CM/ukTMukTMukTM/reference/bitable-v1/app-table-record/search
-    public static String LARK_SEARCH_TABLE_RECORD(String appToken, String tableId){
-        return String.format("/open-apis/bitable/v1/apps/%s/tables/%s/records/search", appToken, tableId);
-    }
-
     // https://open.larksuite.com/document/server-docs/docs/bitable-v1/app-table-record/list
     public static String LARK_LIST_TABLE_RECORDS(String appToken, String tableId){
         return String.format("/open-apis/bitable/v1/apps/%s/tables/%s/records", appToken, tableId);

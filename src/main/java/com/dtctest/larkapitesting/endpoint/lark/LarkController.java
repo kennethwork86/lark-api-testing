@@ -27,23 +27,4 @@ public class LarkController {
         return new ApiResponse<>(ApiHeaderConstant.SUCCESS, larkService.getAppId());
     }
 
-    @PostMapping("/handle-event-subscription")
-    public ResponseEntity<Map<String, String>> handleEventSubscription(@RequestBody Map<String, Object> body) {
-        log.info("Received event subscription request: {}", body);
-
-        Object challenge = body.get("challenge");
-        Map<String, String> response = new HashMap<>();
-
-        if (challenge != null) {
-            response.put("challenge", challenge.toString());
-            return ResponseEntity.ok()
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(response);
-        } else {
-            // Not a verification event; you can handle actual events here
-            return ResponseEntity.ok().build();
-        }
-    }
-
-
 }
