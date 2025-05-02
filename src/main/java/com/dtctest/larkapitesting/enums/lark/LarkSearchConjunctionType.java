@@ -7,8 +7,8 @@ import lombok.AllArgsConstructor;
 @AllArgsConstructor
 public enum LarkSearchConjunctionType {
 
-    AND(1, "and"),
-    OR(2, "or"),
+    AND (1, "and"),
+    OR  (2, "or"),
     ;
 
     public final int id;

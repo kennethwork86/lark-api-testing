@@ -24,35 +24,28 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class LarkService {
 
-    private List<FileInfo> resumeFolderCache = new ArrayList<>();
-
-    private boolean firstRun = true;
-
     private final LarkProperties larkProperties;
-
+    private List<FileInfo> resumeFolderCache = new ArrayList<>();
+    private boolean firstRun = true;
     private LarkAppTokenResp larkAppTokenResp;
 
     private HTTP.Requester getWithAppToken(String token, String subUri) {
         UrlBuilder builder = UrlBuilder.by(LarkConstant.LARK_HOST, subUri);
-
         return HTTP.get(builder.getFullUrl()).accessToken(token);
     }
 
     private HTTP.Requester postWithAppToken(String token, String subUri) {
         UrlBuilder builder = UrlBuilder.by(LarkConstant.LARK_HOST, subUri);
-
         return HTTP.post(builder.getFullUrl()).accessToken(token);
     }
 
     private HTTP.Requester patchWithAppToken(String token, String subUri) {
         UrlBuilder builder = UrlBuilder.by(LarkConstant.LARK_HOST, subUri);
-
         return HTTP.patch(builder.getFullUrl()).accessToken(token);
     }
 
     private HTTP.Requester putWithAppToken(String token, String subUri) {
         UrlBuilder builder = UrlBuilder.by(LarkConstant.LARK_HOST, subUri);
-
         return HTTP.put(builder.getFullUrl()).accessToken(token);
     }
 
@@ -100,7 +93,7 @@ public class LarkService {
     @PostConstruct
     @Scheduled(cron = "0 */2 * * * *")
     @Async
-    // 填充角色/用户的缓存列表，每5分钟刷新一次
+    // 填充角色/用户的缓存列表，每2分钟刷新一次
     public void init() {
         log.info("[START] - HR Lark scheduler");
         String resumeFolderToken = larkProperties.resumeFolderToken;
@@ -110,28 +103,35 @@ public class LarkService {
         List<FileInfo> resumeFolders;
         List<TableRecordInfo> tableRecordInfos;
 
-        // 抓取所有resume folder
-        FileItemsResp resumeFolderResp =  getFileItems(resumeFolderToken).data;
+        // 1. 基于folder token获取文件夹下的文档清单
+        FileItemsResp resumeFolderResp = getFileItems(resumeFolderToken).data;
         resumeFolders = resumeFolderResp.fileInfos;
-        if(resumeFolderResp.fileInfos == null) return;
+        if (resumeFolderResp.fileInfos == null) return;
 
-        // 抓取candidate file
-        resumeFolders.removeIf(resumeFolder -> {
+        resumeFolders.removeIf(resumeFolder -> { // 排除不存在简历的文档清单
             FileItemsResp candidateFileResp = getFileItems(resumeFolder.token).data;
             resumeFolder.resumeFile = candidateFileResp.fileInfos.stream().findFirst().orElse(null);
             return resumeFolder.resumeFile == null;
         });
 
-        if(firstRun){ // 第一次会把resume cache起来，之后就不用对比已存起在的resume
-            // 抓取所有记录的candidates
+        resumeFolders.removeIf(resumeFolder -> { // 排除不符合规范的命名方式：名字_邮件
+            if (resumeFolder.name == null) return true;
+            String[] parts = resumeFolder.name.split("_");
+            return parts.length != 2 || parts[0].isEmpty() || parts[1].isEmpty();
+        });
+
+        // 2. 初始会提前缓存目标文档现有候选者纪录，用于省略步骤3对比已存在的候选者纪录
+        if (firstRun) {
+            // 获取现有的候选者记录
             TableRecordItemsResp tableRecordItemsResp = listTableRecords(candidateAppToken, candidateTableId, candidateRecordFields, null).data;
             tableRecordInfos = tableRecordItemsResp.tableRecordInfos;
-        }else{
+            firstRun = false;
+        } else {
             resumeFolders = resumeFolders.stream().filter(resumeFolder -> !resumeFolderCache.contains(resumeFolder)).toList();
 
-            // 抓取candidate file
-            for(FileInfo resumeFolder : resumeFolders) {
-                FileItemsResp candidateFileResp =  getFileItems(resumeFolder.token).data;
+            // 获取不存在缓存中的简历
+            for (FileInfo resumeFolder : resumeFolders) {
+                FileItemsResp candidateFileResp = getFileItems(resumeFolder.token).data;
                 resumeFolder.resumeFile = candidateFileResp.fileInfos.stream().findFirst().orElse(null);
             }
 
@@ -149,24 +149,25 @@ public class LarkService {
                 .filter(record -> record.fields != null)
                 .collect(Collectors.toMap(
                         record -> {
-                            String name = String.valueOf(record.fields.get("Candidate Name"));
-                            String email = String.valueOf(record.fields.get("Candidate Email"));
+                            String name = String.valueOf(record.fields.get(CandidateRecord.CANDIDATE_NAME));
+                            String email = String.valueOf(record.fields.get(CandidateRecord.CANDIDATE_EMAIL));
                             return name + "_" + email;
                         },
                         record -> record
                 ));
 
-        for(FileInfo resumeFolder : resumeFolders) {
-            TableRecordInfo candidateRecordInfo = existingCandidates.get(resumeFolder.name);
-            if(candidateRecordInfo != null) {
+        // 3. 判断排除缓存后，文件夹下的文档清单是否需要更新或插入候选者信息
+        for (FileInfo resumeFolder : resumeFolders) {
+            TableRecordInfo existingCandidateRecordInfo = existingCandidates.get(resumeFolder.name);
+            if (existingCandidateRecordInfo != null) {
                 // 不同的resume link：更新记录
-                String candidateResumeLink = String.valueOf(candidateRecordInfo.fields.get("Resume Link"));
-                if(resumeFolder.resumeFile != null && !resumeFolder.resumeFile.url.equals(candidateResumeLink)){
-                    candidateRecordInfo.fields.put("Resume Link", resumeFolder.resumeFile.url);
-                    updateTableRecord(candidateAppToken, candidateTableId, candidateRecordInfo.recordId, candidateRecordInfo.fields);
+                String candidateResumeLink = String.valueOf(existingCandidateRecordInfo.fields.get(CandidateRecord.RESUME_LINK));
+                if (resumeFolder.resumeFile != null && !resumeFolder.resumeFile.url.equals(candidateResumeLink)) {
+                    existingCandidateRecordInfo.fields.put(CandidateRecord.RESUME_LINK, resumeFolder.resumeFile.url);
+                    updateTableRecord(candidateAppToken, candidateTableId, existingCandidateRecordInfo.recordId, existingCandidateRecordInfo.fields);
                 }
-            }else{
-                String[] parts = resumeFolder.name.split("_", 2); // [name, email]
+            } else {
+                String[] parts = resumeFolder.name.split("_", 2); // 格式：名字_邮件
                 String namePart = parts[0];
                 String emailPart = parts.length > 1 ? parts[1] : "";
 
@@ -182,29 +183,34 @@ public class LarkService {
                         .findFirst()
                         .orElse(null);
 
-                if(matchedByName == null && matchedByEmail == null) { // candidate不存在：添加记录
+                if (matchedByName == null && matchedByEmail == null) { // candidate不存在：添加记录
                     CandidateRecord newCandidateRecord = new CandidateRecord();
-                    newCandidateRecord.name = resumeFolder.name.split("_")[0];
-                    newCandidateRecord.email = resumeFolder.name.split("_")[1];
-                    if(resumeFolder.resumeFile == null) continue;
+                    for (String part : parts) {
+                        if (part.contains("@")) {
+                            newCandidateRecord.email = part;
+                        } else {
+                            newCandidateRecord.name = part;
+                        }
+                    }
+
+                    if (resumeFolder.resumeFile == null) continue;
                     newCandidateRecord.resumeLink = resumeFolder.resumeFile.url;
                     createTableRecord(candidateAppToken, candidateTableId, newCandidateRecord.toMap(Object.class));
-                }else if(matchedByName != null) { // 不同的email：添加记录
-                    matchedByName.fields.put("Candidate Email", emailPart);
+                } else if (matchedByName != null) { // 不同的email：添加记录
+                    matchedByName.fields.put(CandidateRecord.CANDIDATE_EMAIL, emailPart);
                     createTableRecord(candidateAppToken, candidateTableId, matchedByName.fields);
-                }else if(matchedByEmail != null) { // 不同的name：更新记录
-                    matchedByEmail.fields.put("Candidate Name", namePart);
+                } else { // 不同的name：更新记录
+                    matchedByEmail.fields.put(CandidateRecord.CANDIDATE_NAME, namePart);
                     updateTableRecord(candidateAppToken, candidateTableId, matchedByEmail.recordId, matchedByEmail.fields);
                 }
             }
         }
 
-        firstRun = false;
         resumeFolderCache = resumeFolders;
         log.info("[END] - HR Lark scheduler");
     }
 
-    private TableRecordSearchFilterCondition mapTableRecordSearchFilterCondition(String fieldName, LarkSearchOperatorType operator, List<String> value){
+    private TableRecordSearchFilterCondition mapTableRecordSearchFilterCondition(String fieldName, LarkSearchOperatorType operator, List<String> value) {
         TableRecordSearchFilterCondition condition = new TableRecordSearchFilterCondition();
         condition.fieldName = fieldName;
         condition.operator = operator;
@@ -227,6 +233,7 @@ public class LarkService {
         Map<String, Object> body = new HashMap<>();
         body.put("fields", fields);
 
+        // 插入新纪录
         LarkDictResp resp = postWithAppToken(getAppToken().tenantAccessToken, LarkConstant.LARK_CREATE_TABLE_RECORD(appToken, tableId))
                 .bodyJson(body)
                 .asObject(LarkDictResp.class).body();
@@ -245,7 +252,7 @@ public class LarkService {
         return getTableRecordId(resp);
     }
 
-    public LarkResponse<TableRecordItemsResp> listTableRecords(String appToken, String tableId, List<String> fieldNames, String query){
+    public LarkResponse<TableRecordItemsResp> listTableRecords(String appToken, String tableId, List<String> fieldNames, String query) {
         HTTP.Requester requester = getWithAppToken(getAppToken().tenantAccessToken, LarkConstant.LARK_LIST_TABLE_RECORDS(appToken, tableId));
         if (query != null) {
             requester.queryString("query", query);
@@ -280,13 +287,13 @@ public class LarkService {
     @NotNull
     private static Map<String, String> mapCandidateResumeFilter(List<FileInfo> resumeFolders) {
         Map<String, String> filters = new HashMap<>();
-        for(FileInfo resumeFolder : resumeFolders) {
+        for (FileInfo resumeFolder : resumeFolders) {
             String[] parts = resumeFolder.name.split("_", 2); // [name, email]
             String namePart = parts[0];
             String emailPart = parts.length > 1 ? parts[1] : "";
-            filters.put("Candidate Name", namePart);
-            filters.put("Candidate Email", emailPart);
-            filters.put("Resume Link", resumeFolder.resumeFile.url);
+            filters.put(CandidateRecord.CANDIDATE_NAME, namePart);
+            filters.put(CandidateRecord.CANDIDATE_EMAIL, emailPart);
+            filters.put(CandidateRecord.RESUME_LINK, resumeFolder.resumeFile.url);
         }
         return filters;
     }

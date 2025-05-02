@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.extern.slf4j.Slf4j;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -11,6 +12,10 @@ import java.util.Map;
 
 @Slf4j
 public class CandidateRecord {
+    public static final String CANDIDATE_NAME = "Candidate Name";
+    public static final String CANDIDATE_EMAIL = "Candidate Email";
+    public static final String RESUME_LINK = "Resume Link";
+
     @JsonProperty("Candidate Name")
     public String name;
     @JsonProperty("Candidate Email")
@@ -22,10 +27,11 @@ public class CandidateRecord {
         Map<String, T> map = new HashMap<>();
         try {
             for (Field field : this.getClass().getDeclaredFields()) {
+                if (Modifier.isStatic(field.getModifiers())) continue;
+
                 if ("log".equals(field.getName())) {
                     continue;
                 }
-                field.setAccessible(true);
                 Object value = field.get(this);
                 if (clazz.isInstance(value)) {
                     JsonProperty jsonProp = field.getAnnotation(JsonProperty.class);
